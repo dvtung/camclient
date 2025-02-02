@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">CamClient</string>
+
+
+
+    <string name="main_btn_cam">Camera Test</string>
+
+
+    <string name="cam_btn_capture">Capture</string>
+    <string name="ISO_txt">ISO</string>
+    <string name="Speed_txt">Speed</string>
+    <string name="EV_txt">EV</string>
+    <string name="WB_txt">WB</string>
+    <string name="Focus_txt">Auto Focus</string>
+    <string name="Zoom_txt">Zoom</string>
+
+    <string name="min_value">min</string>
+    <string name="current_value">value</string>
+    <string name="max_value">max</string>
+</resources>
