@@ -6,62 +6,80 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.util.Range
 
-class CameraInfo(val cameraManager : CameraManager, val cameraDevice: CameraDevice?,  var cameraId: String)  {
+data class CameraInfo(
+    var cameraId: String? = null, // Store the camera ID instead of CameraDevice
+    var ISO: IntValue? = null,
+    var Exposure: LongValue? = null,
+    var EV: IntValue? = null,
+    var WB: WBMode? = null,
+    var Zoom: FloatValue? = null,
+    var Focus: FocusInfo? = null,
+    var AutoFocus: Boolean = false,
+    var AutoExposure: Boolean = false,
+    var initSuccessful: Boolean = false){
 
-    private lateinit var _iso: IntValue
-    var ISO : IntValue
-        get() = _iso
-        set(value) {
-            _iso = value
-        }
-    private lateinit var _exposure: LongValue
-    var Exposure : LongValue
-        get() = _exposure
-        set(value) {
-            _exposure = value
-        }
-    private lateinit var _ev: IntValue
-    var EV : IntValue
-        get() = _ev
-        set(value) {
-            _ev = value
-        }
-    private var _wb: WBMode? = null
-    var WB : WBMode?
-        get() = _wb
-        set(value) {
-            _wb = value
-        }
 
-    private var _initSuccessful: Boolean = false
-    var initSuccessful : Boolean
-        get() = _initSuccessful
-        set(value) {
-            _initSuccessful = value
-        }
+//    private lateinit var _iso: IntValue
+//    var ISO : IntValue
+//        get() = _iso
+//        set(value) {
+//            _iso = value
+//        }
+//    private lateinit var _exposure: LongValue
+//    var Exposure : LongValue
+//        get() = _exposure
+//        set(value) {
+//            _exposure = value
+//        }
+//    private lateinit var _ev: IntValue
+//    var EV : IntValue
+//        get() = _ev
+//        set(value) {
+//            _ev = value
+//        }
+//    private var _wb: WBMode? = null
+//    var WB : WBMode?
+//        get() = _wb
+//        set(value) {
+//            _wb = value
+//        }
+//
+//    private var _initSuccessful: Boolean = false
+//    var initSuccessful : Boolean
+//        get() = _initSuccessful
+//        set(value) {
+//            _initSuccessful = value
+//        }
+//
+//    private var _zoom : FloatValue?= null
+//    var Zoom : FloatValue?
+//        get() = _zoom
+//        set(value){
+//            _zoom = value
+//        }
+//
+//    private var _focus : FocusInfo? = null
+//    var Focus : FocusInfo?
+//        get() = _focus
+//        set(value){
+//            _focus = value
+//        }
+//
+//    private var _autoFocus: Boolean = false
+//    var AutoFocus : Boolean
+//        get() = _autoFocus
+//        set(value) {
+//            _autoFocus = value
+//        }
+//
+//    private var _autoExposure: Boolean = false
+//    var AutoExposure : Boolean
+//        get() = _autoExposure
+//        set(value) {
+//            _autoExposure = value
+//        }
 
-    private var _zoom : FloatValue?= null
-    var Zoom : FloatValue?
-        get() = _zoom
-        set(value){
-            _zoom = value
-        }
-
-    private var _focus : FocusInfo? = null
-    var Focus : FocusInfo?
-        get() = _focus
-        set(value){
-            _focus = value
-        }
-
-    private var _autoFocus: Boolean = true
-    var AutoFocus : Boolean
-        get() = _autoFocus
-        set(value) {
-            _autoFocus = value
-        }
-
-    fun initCameraCharacteristics(){
+    fun initCameraCharacteristics(cameraManager : CameraManager, cameraDevice: CameraDevice?,  cameraId: String){
         try {
 
             if (cameraId !in cameraManager.cameraIdList) return
@@ -72,31 +90,31 @@ class CameraInfo(val cameraManager : CameraManager, val cameraDevice: CameraDevi
 
             //ISO
             val isoRange: Range<Int>? = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
-            _iso = IntValue(isoRange?.lower, isoRange?.upper, captureRequestBuilder.get(CaptureRequest.SENSOR_SENSITIVITY))
+            ISO = IntValue(isoRange?.lower, isoRange?.upper, 2000)
 
             //Speed or Exposure
             val exposureTimeRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
-            _exposure = LongValue(exposureTimeRange?.lower, exposureTimeRange?.upper, captureRequestBuilder.get(CaptureRequest.SENSOR_EXPOSURE_TIME))
+            Exposure = LongValue(exposureTimeRange?.lower, exposureTimeRange?.upper, 120000000)
 
             //EV
             val evRange = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
-            _ev = IntValue(evRange?.lower, evRange?.upper, captureRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION))
+            EV = IntValue(evRange?.lower, evRange?.upper, captureRequestBuilder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION))
 
             //WB
             val wbArray = characteristics.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)
             wbArray?.sort()
-            _wb = WBMode(wbArray, captureRequestBuilder.get(CaptureRequest.CONTROL_AWB_MODE))
+            WB = WBMode(wbArray, captureRequestBuilder.get(CaptureRequest.CONTROL_AWB_MODE))
 
             //Zoom
             val zoomRange = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
-            _zoom = FloatValue(zoomRange?.lower!! * 10, zoomRange.upper!! * 10, captureRequestBuilder.get(CaptureRequest.CONTROL_ZOOM_RATIO)!! * 10)
+            Zoom = FloatValue(zoomRange?.lower!! * 10, zoomRange.upper!! * 10, captureRequestBuilder.get(CaptureRequest.CONTROL_ZOOM_RATIO)!! * 10)
 
             //Lens Focus
             val lensFocusRange = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
             lensFocusRange?.sort()
-            _focus = FocusInfo(lensFocusRange, captureRequestBuilder.get(CaptureRequest.LENS_FOCUS_DISTANCE))
+            Focus = FocusInfo(lensFocusRange, captureRequestBuilder.get(CaptureRequest.LENS_FOCUS_DISTANCE))
 
-            _initSuccessful = true
+            initSuccessful = true
 
         } catch (ex: Exception){
             ex.printStackTrace()

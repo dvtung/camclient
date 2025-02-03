@@ -1,7 +1,8 @@
 package com.dvt.camclient
-
+import com.google.gson.Gson
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
@@ -9,9 +10,7 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.ImageReader
@@ -19,7 +18,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.Looper
 import android.util.Log
 import android.util.Size
 import android.view.Surface
@@ -30,20 +28,17 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
-import androidx.transition.Visibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.w3c.dom.Text
 import java.io.File
 import java.io.FileOutputStream
+import java.io.FileWriter
 import java.nio.ByteBuffer
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -108,8 +103,6 @@ class CamActivity : AppCompatActivity() {
     private lateinit var cameraHandler: Handler
 
 
-
-
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
 
     private fun getOptimalPreviewSize(sizes: Array<Size>, targetSize: Size): Size {
@@ -133,9 +126,14 @@ class CamActivity : AppCompatActivity() {
                     else -> "Unknown Camera"
                 }
 
-                val focalLengths = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.max()
+                val focalLengths =
+                    characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                        ?.max()
 
-                Log.d("CamClient","Camera ID: $cameraId - Type: $cameraType - FocalLength: $focalLengths")
+                Log.d(
+                    "CamClient",
+                    "Camera ID: $cameraId - Type: $cameraType - FocalLength: $focalLengths"
+                )
             }
         } catch (e: CameraAccessException) {
             e.printStackTrace()
@@ -144,7 +142,7 @@ class CamActivity : AppCompatActivity() {
 
     private val textureListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-            Log.d("CamClient","onSurfaceTextureAvailable")
+            Log.d("CamClient", "onSurfaceTextureAvailable")
             openCamera()
         }
 
@@ -153,11 +151,11 @@ class CamActivity : AppCompatActivity() {
             width: Int,
             height: Int
         ) {
-            Log.d("CamClient","onSurfaceTextureSizeChanged")
+            Log.d("CamClient", "onSurfaceTextureSizeChanged")
         }
 
-        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture) : Boolean{
-            Log.d("CamClient","onSurfaceTextureDestroyed")
+        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+            Log.d("CamClient", "onSurfaceTextureDestroyed")
             return false
         }
 
@@ -166,14 +164,17 @@ class CamActivity : AppCompatActivity() {
         }
     }
 
-    private fun createPreviewCameraSession( previewSize: Size ) {
+    private fun createPreviewCameraSession(previewSize: Size) {
         try {
             val texture = textureView.surfaceTexture ?: return
             texture.setDefaultBufferSize(previewSize.width, previewSize.height)
             val surface = Surface(texture)
 
-            captureRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply { addTarget(surface) }
-            imageReader = ImageReader.newInstance(previewSize.width, previewSize.height, ImageFormat.JPEG, 1)
+            captureRequestBuilder =
+                cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+                    .apply { addTarget(surface) }
+            imageReader =
+                ImageReader.newInstance(previewSize.width, previewSize.height, ImageFormat.JPEG, 1)
 
             val sessionConfig = SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
@@ -181,10 +182,9 @@ class CamActivity : AppCompatActivity() {
                 Executors.newSingleThreadExecutor(),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
-                        Log.d("CamClient","onConfigured")
+                        Log.d("CamClient", "onConfigured")
                         captureSession = session
                         try {
-
                             captureSession.setRepeatingRequest(
                                 captureRequestBuilder.build(),
                                 null,
@@ -196,7 +196,7 @@ class CamActivity : AppCompatActivity() {
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
-                        Log.d("CamClient","onConfigureFailed")
+                        Log.d("CamClient", "onConfigureFailed")
                         Toast.makeText(
                             applicationContext,
                             "Failed to configure camera",
@@ -237,8 +237,8 @@ class CamActivity : AppCompatActivity() {
                     override fun onOpened(camera: CameraDevice) {
                         Log.d("CamClient", "Camera Device Opened")
                         cameraDevice = camera
-                        cameraInfo = CameraInfo(cameraManager, cameraDevice, cameraId)
-                        cameraInfo.initCameraCharacteristics()
+                        cameraInfo = CameraInfo()
+                        cameraInfo.initCameraCharacteristics(cameraManager, cameraDevice, cameraId)
                         createPreviewCameraSession(previewSize)
                     }
 
@@ -262,16 +262,17 @@ class CamActivity : AppCompatActivity() {
         cameraDevice?.close()
     }
 
-    private suspend fun takePictureNew(){
-        withContext(Dispatchers.IO){
+    private suspend fun takePictureNew() {
+        withContext(Dispatchers.IO) {
             if (cameraDevice == null) return@withContext
 
-            val captureBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply { addTarget(imageReader.surface) }
+            val captureBuilder =
+                cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                    .apply { addTarget(imageReader.surface) }
 
             imageReader.setOnImageAvailableListener({ reader ->
                 coroutineScope.launch {
-                    reader.acquireLatestImage()?.let {
-                        image ->
+                    reader.acquireLatestImage()?.let { image ->
                         val buffer: ByteBuffer = image.planes[0].buffer
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
@@ -282,24 +283,36 @@ class CamActivity : AppCompatActivity() {
 
             }, cameraHandler)
 
-            cameraDevice!!.createCaptureSession(listOf(imageReader.surface), object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    session.capture(captureBuilder.build(), null, null)
+            cameraDevice!!.createCaptureSession(
+                listOf(imageReader.surface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        session.capture(captureBuilder.build(), null, null)
 
-                    coroutineScope.launch (Dispatchers.Main) { createPreviewCameraSession(previewSize) }
-                }
-                override fun onConfigureFailed(session: CameraCaptureSession) {}
-            }, cameraHandler)
+                        coroutineScope.launch(Dispatchers.Main) {
+                            createPreviewCameraSession(previewSize)
+                        }
+                    }
+
+                    override fun onConfigureFailed(session: CameraCaptureSession) {}
+                },
+                cameraHandler
+            )
         }
     }
 
     private suspend fun saveImageNew(bytes: ByteArray) {
         withContext(Dispatchers.IO) {
-            val name = "IMG_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")) + ".jpg"
+            val name = "IMG_" + LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS")) + ".jpg"
             val file = File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), name)
             FileOutputStream(file).use { it.write(bytes) }
             withContext(Dispatchers.Main) {
-                Toast.makeText(this@CamActivity, "Image saved: ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this@CamActivity,
+                    "Image saved: ${file.absolutePath}",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -307,128 +320,278 @@ class CamActivity : AppCompatActivity() {
     //endregion
 
     //region Camera configuration
-    private lateinit var cameraInfo : CameraInfo
-    private lateinit var isoTextView : TextView
-    private lateinit var expTextView : TextView
-    private lateinit var evTextView : TextView
-    private lateinit var wbTextView : TextView
-    private lateinit var zoomTextView : TextView
-    private lateinit var minTextView : TextView
-    private lateinit var maxTextView : TextView
-    private lateinit var valueTextView : TextView
-    private lateinit var modSeekBar : SeekBar
-    private lateinit var autoFocusSwitch : SwitchCompat
-    private lateinit var layoutFuncs : LinearLayout
+    private lateinit var cameraInfo: CameraInfo
+    private lateinit var isoTextView: TextView
+    private lateinit var expTextView: TextView
+    private lateinit var evTextView: TextView
+    private lateinit var wbTextView: TextView
+    private lateinit var zoomTextView: TextView
+    private lateinit var minTextView: TextView
+    private lateinit var maxTextView: TextView
+    private lateinit var valueTextView: TextView
+    private lateinit var modSeekBar: SeekBar
+    private lateinit var autoFocusSwitch: SwitchCompat
+    private lateinit var autoExposureSwitch: SwitchCompat
+    private lateinit var layoutFuncs: LinearLayout
 
-    private var selectedFunc : Funcs = Funcs.NONE
+    private var selectedFunc: Funcs = Funcs.NONE
 
-    fun initCameraConfiguration(){
-        isoTextView = findViewById<TextView>(R.id.txt_iso)
-        expTextView = findViewById<TextView>(R.id.txt_speed)
-        evTextView = findViewById<TextView>(R.id.txt_ev)
-        wbTextView = findViewById<TextView>(R.id.txt_wb)
-        zoomTextView = findViewById<TextView>(R.id.txt_zoom)
-        minTextView = findViewById<TextView>(R.id.txt_min_value)
-        maxTextView = findViewById<TextView>(R.id.txt_max_value)
-        valueTextView = findViewById<TextView>(R.id.txt_current_value)
-        modSeekBar = findViewById<SeekBar>(R.id.sk_mod_value)
-        autoFocusSwitch = findViewById<SwitchCompat>(R.id.sw_autoFocus)
-        layoutFuncs = findViewById<LinearLayout>(R.id.layout_selected_function)
+    private fun initCameraConfiguration() {
+        isoTextView = findViewById(R.id.txt_iso)
+        expTextView = findViewById(R.id.txt_speed)
+        evTextView = findViewById(R.id.txt_ev)
+        wbTextView = findViewById(R.id.txt_wb)
+        zoomTextView = findViewById(R.id.txt_zoom)
+        minTextView = findViewById(R.id.txt_min_value)
+        maxTextView = findViewById(R.id.txt_max_value)
+        valueTextView = findViewById(R.id.txt_current_value)
+        modSeekBar = findViewById(R.id.sk_mod_value)
+        autoFocusSwitch = findViewById(R.id.sw_autoFocus)
+        autoExposureSwitch = findViewById(R.id.auto_exposure)
+        layoutFuncs = findViewById(R.id.layout_selected_function)
 
-        isoTextView.setOnClickListener{
+        isoTextView.setOnClickListener {
             initFunction(Funcs.ISO)
         }
-        expTextView.setOnClickListener{
+        expTextView.setOnClickListener {
             initFunction(Funcs.EXP)
         }
-        evTextView.setOnClickListener{
+        evTextView.setOnClickListener {
             initFunction(Funcs.EV)
         }
-        wbTextView.setOnClickListener{
+        wbTextView.setOnClickListener {
             initFunction(Funcs.WB)
         }
-        zoomTextView.setOnClickListener{
+        zoomTextView.setOnClickListener {
             initFunction(Funcs.ZOOM)
         }
 
-        modSeekBar.setOnSeekBarChangeListener(object: SeekBar.OnSeekBarChangeListener{
+        modSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                valueTextView.setText(String.format("%,d", progress))
-                when (selectedFunc){
-                    Funcs.ISO -> cameraInfo.ISO.value = progress
-                    Funcs.EXP -> cameraInfo.Exposure.value = progress.toLong()
-                    Funcs.EV -> cameraInfo.EV.value = progress
+
+                valueTextView.text = "%,d".format(progress)
+
+                when (selectedFunc) {
+                    Funcs.ISO -> cameraInfo.ISO?.value = progress
+                    Funcs.EXP -> cameraInfo.Exposure?.value = progress.toLong()
+                    Funcs.EV -> cameraInfo.EV?.value = progress
                     Funcs.WB -> cameraInfo.WB?.value = progress
                     Funcs.ZOOM -> cameraInfo.Zoom?.value = progress.toFloat()
                     Funcs.NONE -> {}
                 }
+                updateCameraPreview()
             }
+
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
+        autoFocusSwitch.setOnCheckedChangeListener { _, isChecked ->
+            cameraInfo.AutoFocus = isChecked
+            updateCameraPreview()
+        }
+
+        autoExposureSwitch.setOnCheckedChangeListener { _, isChecked ->
+            cameraInfo.AutoExposure = isChecked
+
+            if (cameraInfo.AutoExposure)
+                captureRequestBuilder.set(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON
+                )
+            else
+                captureRequestBuilder.set(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_OFF
+                )
+            updateCameraPreview()
+        }
+        initCameraInfo()
     }
 
-    private fun initFunction(func: Funcs){
-        if (selectedFunc == Funcs.NONE){
+    private fun initFunction(func: Funcs) {
+        if (selectedFunc == Funcs.NONE) CoroutineScope(Dispatchers.Main).launch {
             layoutFuncs.visibility = View.VISIBLE
-            when (func){
+            when (func) {
                 Funcs.ISO -> {
-                    minTextView.setText(String.format("%,d", cameraInfo.ISO.min?:0))
-                    maxTextView.setText(String.format("%,d", cameraInfo.ISO.max?:0))
-                    valueTextView.setText(String.format("%,d", cameraInfo.ISO.value?:0))
 
-                    modSeekBar.min = cameraInfo.ISO.min?:0
-                    modSeekBar.max = cameraInfo.ISO.max?:0
-                    modSeekBar.progress = cameraInfo.ISO.value?:0
+                    valueTextView.text = "%,d".format(cameraInfo.ISO?.value ?: 0)
+
+                    modSeekBar.min = cameraInfo.ISO?.min ?: 0
+                    modSeekBar.max = cameraInfo.ISO?.max ?: 0
+                    modSeekBar.progress = cameraInfo.ISO?.value ?: 0
+                    isoTextView.setTextColor(Color.parseColor("#FFC300"))
                 }
-                Funcs.EXP -> {
-                    minTextView.setText(String.format("%,d", cameraInfo.Exposure.min?:0))
-                    maxTextView.setText(String.format("%,d", cameraInfo.Exposure.max?:0))
-                    valueTextView.setText(String.format("%,d", cameraInfo.Exposure.value?:0))
 
-                    modSeekBar.min = (cameraInfo.Exposure.min?:0).toInt()
-                    modSeekBar.max = (cameraInfo.Exposure.max?:0).toInt()
-                    modSeekBar.progress = (cameraInfo.Exposure.value?:0).toInt()
+                Funcs.EXP -> {
+                    valueTextView.text = "%,d".format(cameraInfo.Exposure?.value ?: 0)
+
+                    modSeekBar.min = (cameraInfo.Exposure?.min ?: 0).toInt()
+                    modSeekBar.max = (cameraInfo.Exposure?.max ?: 0).toInt()
+                    modSeekBar.progress = (cameraInfo.Exposure?.value ?: 0).toInt()
+                    expTextView.setTextColor(Color.parseColor("#FFC300"))
                 }
 
                 Funcs.EV -> {
-                    minTextView.setText(String.format("%,d", cameraInfo.EV.min?:0))
-                    maxTextView.setText(String.format("%,d", cameraInfo.EV.max?:0))
-                    valueTextView.setText(String.format("%,d", cameraInfo.EV.value?:0))
+                    valueTextView.text = "%,d".format(cameraInfo.EV?.value ?: 0)
 
-                    modSeekBar.min = cameraInfo.EV.min?:0
-                    modSeekBar.max = cameraInfo.EV.max?:0
-                    modSeekBar.progress = cameraInfo.EV.value?:0
+                    modSeekBar.min = cameraInfo.EV?.min ?: 0
+                    modSeekBar.max = cameraInfo.EV?.max ?: 0
+                    modSeekBar.progress = cameraInfo.EV?.value ?: 0
+                    evTextView.setTextColor(Color.parseColor("#FFC300"))
                 }
+
                 Funcs.WB -> {
-                    minTextView.setText(String.format("%,d", cameraInfo.WB?.modes?.min()?:0))
-                    maxTextView.setText(String.format("%,d", cameraInfo.WB?.modes?.max()?:0))
-                    valueTextView.setText(String.format("%,d", cameraInfo.WB?.value?:0))
+                    valueTextView.text = "%,d".format(cameraInfo.WB?.value ?: 0)
 
-                    modSeekBar.min = cameraInfo.WB?.modes?.min()?:0
-                    modSeekBar.max = cameraInfo.WB?.modes?.max()?:0
-                    modSeekBar.progress = cameraInfo.WB?.value?:0
+                    modSeekBar.min = cameraInfo.WB?.modes?.min() ?: 0
+                    modSeekBar.max = cameraInfo.WB?.modes?.max() ?: 0
+                    modSeekBar.progress = cameraInfo.WB?.value ?: 0
+                    wbTextView.setTextColor(Color.parseColor("#FFC300"))
                 }
+
                 Funcs.ZOOM -> {
-                    minTextView.setText(String.format("%,d", (cameraInfo.Zoom?.min?:0).toInt()))
-                    maxTextView.setText(String.format("%,d", (cameraInfo.Zoom?.max?:0).toInt()))
-                    valueTextView.setText(String.format("%,d", (cameraInfo.Zoom?.value?:0).toInt()))
+                    valueTextView.text = "%,d".format((cameraInfo.Zoom?.value ?: 0).toInt())
 
                     modSeekBar.min = ((cameraInfo.Zoom?.min ?: 0)).toInt()
-                    modSeekBar.max = ((cameraInfo.Zoom?.max ?:0) ).toInt()
-                    modSeekBar.progress = ((cameraInfo.Zoom?.value?:0) ).toInt()
+                    modSeekBar.max = ((cameraInfo.Zoom?.max ?: 0)).toInt()
+                    modSeekBar.progress = ((cameraInfo.Zoom?.value ?: 0)).toInt()
+                    zoomTextView.setTextColor(Color.parseColor("#FFC300"))
                 }
+
                 Funcs.NONE -> {
 
                 }
             }
             selectedFunc = func
         } else {
-            layoutFuncs.visibility = View.INVISIBLE
-            selectedFunc = Funcs.NONE
+            if (selectedFunc == func) {
+                layoutFuncs.visibility = View.INVISIBLE
+                selectedFunc = Funcs.NONE
+                when (func) {
+                    Funcs.ISO -> isoTextView.setTextColor(Color.parseColor("#808080"))
+                    Funcs.EXP -> expTextView.setTextColor(Color.parseColor("#808080"))
+                    Funcs.EV -> evTextView.setTextColor(Color.parseColor("#808080"))
+                    Funcs.WB -> wbTextView.setTextColor(Color.parseColor("#808080"))
+                    Funcs.ZOOM -> zoomTextView.setTextColor(Color.parseColor("#808080"))
+                    Funcs.NONE -> {}
+
+                }
+            }
         }
+
     }
 
+    private fun updateCameraPreview() {
+        try {
+            if (cameraInfo.initSuccessful) {
+
+                if (cameraInfo.AutoFocus)
+                    captureRequestBuilder.set(
+                        CaptureRequest.CONTROL_AF_MODE,
+                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                    )
+                else
+                    captureRequestBuilder.set(
+                        CaptureRequest.CONTROL_AF_MODE,
+                        CaptureRequest.CONTROL_AF_MODE_OFF
+                    )
+
+                captureRequestBuilder.set(
+                    CaptureRequest.SENSOR_EXPOSURE_TIME,
+                    cameraInfo.Exposure?.value
+                )
+                captureRequestBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, cameraInfo.ISO?.value)
+                captureRequestBuilder.set(
+                    CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                    cameraInfo.EV?.value
+                )
+                captureRequestBuilder.set(CaptureRequest.CONTROL_AWB_MODE, cameraInfo.WB?.value)
+                captureRequestBuilder.set(
+                    CaptureRequest.CONTROL_ZOOM_RATIO,
+                    (cameraInfo.Zoom?.value!!).toFloat() / 10
+                )
+            }
+            captureSession.setRepeatingRequest(captureRequestBuilder.build(), null, null)
+        } catch (ex: CameraAccessException) {
+            ex.printStackTrace()
+        }
+    }
+    //endregion
+
+    //region Camera Info
+
+    private lateinit var buttonSave: Button
+    private lateinit var buttonLoad: Button
+
+    private fun initCameraInfo() {
+
+        buttonSave = findViewById(R.id.btn_save)
+        buttonLoad = findViewById(R.id.btn_load)
+
+        buttonSave.setOnClickListener {
+            saveCameraInfoToJson()
+        }
+        buttonLoad.setOnClickListener {
+            loadCameraInfoFromJson()
+            updateCameraPreview()
+        }
+        //loadCameraInfoFromJson()
+    }
+
+    private fun saveCameraInfoToJson() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val gson = Gson()
+            val json = gson.toJson(cameraInfo)
+
+            try {
+                val filename = "camera_info.json"
+                val file = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), filename)
+                FileWriter(file).use { it.write(json) }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@CamActivity,
+                        "Saved camera config",
+                        Toast.LENGTH_SHORT).show()
+                }
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@CamActivity,
+                        "Failed to save camera config",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+    private fun loadCameraInfoFromJson() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val filename = "camera_info.json"
+                val file = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), filename)
+                if (file.exists()){
+                    val json = file.readText()
+                    val gson = Gson()
+                    cameraInfo = gson.fromJson(json, CameraInfo::class.java)
+
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@CamActivity,
+                            "Loaded camera config",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }catch (ex: Exception){
+                ex.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@CamActivity,
+                        "Failed to load camera config",
+                        Toast.LENGTH_SHORT).show()}
+            }
+        }
+    }
     //endregion
 }
